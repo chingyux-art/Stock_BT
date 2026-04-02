@@ -278,43 +278,44 @@ if st.button("Run Backtest"):
         col4.metric("交易次數", len(trades))
 
         st.subheader("⚙️ 最佳參數")
+        
+        if optimize: 
+            for strat, params in best_params_dict.items():
+    
+                st.markdown(f"### 📌 {strat}")
+    
+                if strat == "MA":
+                    st.write(f"短均線：{params['short']}")
+                    st.write(f"長均線：{params['long']}")
+    
+                elif strat == "RSI":
+                    st.write(f"週期：{params['period']}")
+                    st.write(f"買進門檻：{params['buy']}")
+                    st.write(f"賣出門檻：{params['sell']}")
+    
+                elif strat == "Bollinger":
+                    st.write(f"期間 n：{params['n']}")
+                    st.write(f"標準差 k：{params['k']}")
+    
+                elif strat == "KD":
+                    st.write(f"週期 n：{params['n']}")
+                    st.write(f"K 期：{params['k_period']}")
+                    st.write(f"D 期：{params['d_period']}")
+                    st.write(f"低檔：{params['low']}")
+                    st.write(f"高檔：{params['high']}")
 
-        for strat, params in best_params_dict.items():
-
-            st.markdown(f"### 📌 {strat}")
-
-            if strat == "MA":
-                st.write(f"短均線：{params['short']}")
-                st.write(f"長均線：{params['long']}")
-
-            elif strat == "RSI":
-                st.write(f"週期：{params['period']}")
-                st.write(f"買進門檻：{params['buy']}")
-                st.write(f"賣出門檻：{params['sell']}")
-
-            elif strat == "Bollinger":
-                st.write(f"期間 n：{params['n']}")
-                st.write(f"標準差 k：{params['k']}")
-
-            elif strat == "KD":
-                st.write(f"週期 n：{params['n']}")
-                st.write(f"K 期：{params['k_period']}")
-                st.write(f"D 期：{params['d_period']}")
-                st.write(f"低檔：{params['low']}")
-                st.write(f"高檔：{params['high']}")
-
-        st.subheader("🏆 最佳化結果 Top 5")
-        for s in opt_results:
-            st.markdown(f"### 📌 {s}")
-            df_show = opt_results[s].head(5).copy()
-            # ⭐ 排序 + 格式化
-            df_show = df_show.round(4)
-
-            st.dataframe(
-                df_show,
-                use_container_width=True,
-                height=220
-            )
+            st.subheader("🏆 最佳化結果 Top 5")
+            for s in opt_results:
+                st.markdown(f"### 📌 {s}")
+                df_show = opt_results[s].head(5).copy()
+                # ⭐ 排序 + 格式化
+                df_show = df_show.round(4)
+    
+                st.dataframe(
+                    df_show,
+                    use_container_width=True,
+                    height=220
+                )
      
     else:
         st.warning("沒有產生交易績效")
