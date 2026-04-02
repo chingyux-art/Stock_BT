@@ -1,3 +1,4 @@
+import numpy as np
 from ta.momentum import RSIIndicator,StochasticOscillator
 from ta.volatility import BollingerBands
 
