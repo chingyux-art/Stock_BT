@@ -15,8 +15,12 @@ CONDITION_TYPES = {
     "收盤小於MA":    "收盤 < MA (指定週期)",
     "RSI超賣反彈":   "RSI 超賣反彈 (RSI 跌破買進門檻)",
     "RSI超買回吐":   "RSI 超買回吐 (RSI 突破賣出門檻)",
-    "交易量大於":    "Volume > X (百萬股)",
-    "交易量小於":    "Volume < X (百萬股)",
+    "交易量大於":        "Volume > X (張數)",
+    "交易量小於":        "Volume < X (張數)",
+    "交易量倍數>前一日":  "Volume > 前一日 × 倍數",
+    "交易量倍數<前一日":  "Volume < 前一日 × 倍數",
+    "交易量倍數>當週平均": "Volume > 當週平均 × 倍數",
+    "交易量倍數<當週平均": "Volume < 當週平均 × 倍數",
 }
 
 # 每種條件需要的參數及預設值
@@ -30,8 +34,12 @@ CONDITION_PARAMS = {
     "收盤小於MA":   {"period": 20},
     "RSI超賣反彈":  {"period": 14, "buy": 30},
     "RSI超買回吐":  {"period": 14, "sell": 70},
-    "交易量大於":   {"threshold": 10},
-    "交易量小於":   {"threshold": 10},
+    "交易量大於":        {"threshold": 10},
+    "交易量小於":        {"threshold": 10},
+    "交易量倍數>前一日":  {"multiple": 2.0},
+    "交易量倍數<前一日":  {"multiple": 2.0},
+    "交易量倍數>當週平均": {"multiple": 2.0},
+    "交易量倍數<當週平均": {"multiple": 2.0},
 }
 
 
@@ -104,14 +112,36 @@ def check_condition(df: pd.DataFrame, condition_type: str, **params) -> pd.Serie
     elif condition_type == "交易量大於":
         if "Volume" not in df.columns:
             return false_series
-        threshold = float(params.get("threshold", 10)) * 1_000_000
+        threshold = float(params.get("threshold", 10)) * 1000
         return df["Volume"] > threshold
 
     elif condition_type == "交易量小於":
         if "Volume" not in df.columns:
             return false_series
-        threshold = float(params.get("threshold", 10)) * 1_000_000
+        threshold = float(params.get("threshold", 10)) * 1000
         return df["Volume"] < threshold
+
+    elif condition_type in ("交易量倍數>前一日", "交易量倍數<前一日"):
+        if "Volume" not in df.columns:
+            return false_series
+        multiple = float(params.get("multiple", 2.0))
+        prev_vol = df["Volume"].shift(1)
+        if condition_type == "交易量倍數>前一日":
+            return df["Volume"] > prev_vol * multiple
+        else:
+            return df["Volume"] < prev_vol * multiple
+
+    elif condition_type in ("交易量倍數>當週平均", "交易量倍數<當週平均"):
+        if "Volume" not in df.columns:
+            return false_series
+        multiple = float(params.get("multiple", 2.0))
+        # 計算同年同週的平均成交量
+        iso = df.index.isocalendar()
+        week_avg = df["Volume"].groupby([iso.year, iso.week]).transform("mean")
+        if condition_type == "交易量倍數>當週平均":
+            return df["Volume"] > week_avg * multiple
+        else:
+            return df["Volume"] < week_avg * multiple
 
     return false_series
 
