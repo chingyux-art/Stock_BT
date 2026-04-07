@@ -35,7 +35,7 @@ def run_backtest(df, signal):
 
         # 每日 equity
         if position == 1:
-            ret = (price - df["Close"].iloc[i-1]) / df["CLOSE"].iloc[i-1]
+            ret = (price - df["Close"].iloc[i-1]) / df["Close"].iloc[i-1]
             equity.append(equity[-1] * (1 + ret))
         else:
             equity.append(equity[-1])
