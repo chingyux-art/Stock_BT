@@ -170,9 +170,16 @@ def render_condition_ui(prefix: str, label: str):
                 )
             if "threshold" in param_defaults:
                 param_values["threshold"] = st.slider(
-                    f"交易量門檻 (百萬股) (條件{i})", 1, 100,
+                    f"交易量門檻 (張數) (條件{i})", 1, 10000,
                     int(param_defaults["threshold"]),
                     key=f"{prefix}_cond_{i}_threshold",
+                )
+            if "multiple" in param_defaults:
+                param_values["multiple"] = st.slider(
+                    f"倍數 (條件{i})", 1.0, 5.0,
+                    float(param_defaults["multiple"]),
+                    step=0.1,
+                    key=f"{prefix}_cond_{i}_multiple",
                 )
 
         conditions_cfg.append((cond_key, param_values))
