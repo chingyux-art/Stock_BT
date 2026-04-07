@@ -17,7 +17,7 @@ from conditions import (
     combine_signals,
 )
 
-st.title("Quant Backtest GUI")
+st.title("Stock Backtest Application")
 
 # ==============================
 # 股票
