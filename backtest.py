@@ -15,7 +15,7 @@ def run_backtest(df, signal):
 
     for i in range(1, len(df)):
 
-        price = df["CLOSE"].iloc[i]  # ✅ 改成 CLOSE
+        price = df["Close"].iloc[i]
 
         # 進場
         if signal.iloc[i] == 1 and position == 0:
@@ -35,14 +35,14 @@ def run_backtest(df, signal):
 
         # 每日 equity
         if position == 1:
-            ret = (price - df["CLOSE"].iloc[i-1]) / df["CLOSE"].iloc[i-1]  # ✅ 改成 CLOSE
+            ret = (price - df["Close"].iloc[i-1]) / df["CLOSE"].iloc[i-1]
             equity.append(equity[-1] * (1 + ret))
         else:
             equity.append(equity[-1])
 
     # 強制平倉
     if position == 1:
-        price = df["CLOSE"].iloc[-1]  # ✅ 改成 CLOSE
+        price = df["Close"].iloc[-1]
         ret = (price - buy_price) / buy_price
         trades.append({
             "return": ret,
