@@ -26,6 +26,21 @@ def add_indicators(df):
 
     return df
 
+def add_macd(df, fast_period=12, slow_period=26, signal_period=9):
+
+    df = df.copy()
+
+    close = df["Close"]
+
+    ema_fast = close.ewm(span=fast_period, adjust=False).mean()
+    ema_slow = close.ewm(span=slow_period, adjust=False).mean()
+
+    df["MACD"] = ema_fast - ema_slow
+    df["MACD_signal"] = df["MACD"].ewm(span=signal_period, adjust=False).mean()
+    df["MACD_hist"] = df["MACD"] - df["MACD_signal"]
+
+    return df
+
 def compute_kd(df, n=9, k_period=3, d_period=3):
 
     df = df.copy()
