@@ -704,7 +704,7 @@ if st.button("Run Backtest"):
                 delta      = df["Close"].diff()
                 gain       = delta.clip(lower=0).rolling(rsi_period).mean()
                 loss       = (-delta.clip(upper=0)).rolling(rsi_period).mean()
-                rs         = gain / loss.replace(0, np.nan)
+                rs         = gain / loss.where(loss != 0, np.nan)
                 rsi_vals   = 100 - (100 / (1 + rs))
                 buy_lv     = float(rsi_p.get("buy", 30))
                 sell_lv    = float(rsi_p.get("sell", 70))
