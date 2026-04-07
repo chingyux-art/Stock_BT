@@ -4,9 +4,10 @@ from ta.volatility import BollingerBands
 
 def add_indicators(df):
 
-    close = df["CLOSE"]
-    high = df["HIGH"]
-    low = df["LOW"]
+    close = df["Close"]
+    high = df["High"]
+    low = df["Low"]
+
 
     df["MA20"]=close.rolling(20).mean()
     df["MA60"]=close.rolling(60).mean()
