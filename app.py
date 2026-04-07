@@ -1,5 +1,6 @@
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 from datetime import date, datetime
@@ -15,12 +16,6 @@ from conditions import (
     check_condition,
     combine_signals,
 )
-#圖表亂碼問題
-import matplotlib.pyplot as plt
-
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang TC']
-plt.rcParams['axes.unicode_minus'] = False
 
 st.title("Quant Backtest GUI")
 
@@ -172,6 +167,12 @@ def render_condition_ui(prefix: str, label: str):
                     f"賣出門檻 (條件{i})", 50, 90,
                     int(param_defaults["sell"]),
                     key=f"{prefix}_cond_{i}_sell",
+                )
+            if "threshold" in param_defaults:
+                param_values["threshold"] = st.slider(
+                    f"交易量門檻 (百萬股) (條件{i})", 1, 100,
+                    int(param_defaults["threshold"]),
+                    key=f"{prefix}_cond_{i}_threshold",
                 )
 
         conditions_cfg.append((cond_key, param_values))
@@ -502,13 +503,23 @@ if st.button("Run Backtest"):
         col1, col2 = st.columns([3, 1])
 
         with col1:
-            fig, ax = plt.subplots()
-            ax.plot(equity)
-            ax.set_title("資產淨值曲線（Equity Curve）", fontsize=14)
-            ax.set_xlabel("時間", fontsize=10)
-            ax.set_ylabel("資產倍數", fontsize=10)
-            ax.grid(True)
-            st.pyplot(fig)
+            fig_eq = go.Figure()
+            fig_eq.add_trace(go.Scatter(
+                x=df.index,
+                y=equity,
+                mode="lines",
+                name="資產淨值",
+                line=dict(color="royalblue", width=2),
+            ))
+            fig_eq.update_layout(
+                title="資產淨值曲線（Equity Curve）",
+                xaxis_title="日期",
+                yaxis_title="資產倍數",
+                template="plotly_white",
+                height=350,
+                hovermode="x unified",
+            )
+            st.plotly_chart(fig_eq, use_container_width=True)
 
         with col2:
             st.markdown("### 📊 重點指標")
@@ -520,6 +531,203 @@ if st.button("Run Backtest"):
                 st.success("策略為獲利")
             else:
                 st.error("策略為虧損")
+
+        # ==============================
+        # 📈 技術分析圖表
+        # ==============================
+        st.subheader("📈 技術分析圖表")
+
+        # 決定顯示哪些指標
+        show_ma_chart        = "MA" in selected
+        show_bollinger_chart = "Bollinger" in selected
+        show_kd_chart        = "KD" in selected
+        show_macd_chart      = "MACD" in selected
+        show_rsi_chart       = "RSI" in selected
+
+        # 自訂條件也可觸發副圖
+        all_cond_types = [c for c, _ in (entry_conditions + exit_conditions)]
+        if any(c in ("KD黃金交叉", "KD死亡交叉") for c in all_cond_types):
+            show_kd_chart = True
+        if any(c in ("MACD由零翻正", "MACD黃金交叉", "MACD死亡交叉") for c in all_cond_types):
+            show_macd_chart = True
+
+        # 副圖指標清單
+        sub_indicators = []
+        if show_kd_chart:
+            sub_indicators.append("KD")
+        if show_macd_chart:
+            sub_indicators.append("MACD")
+        if show_rsi_chart:
+            sub_indicators.append("RSI")
+
+        # 建立多子圖佈局
+        n_rows = 1 + len(sub_indicators)
+        if sub_indicators:
+            main_h = 0.55
+            sub_h  = round(0.45 / len(sub_indicators), 4)
+            row_heights    = [main_h] + [sub_h] * len(sub_indicators)
+            subplot_titles = ["價格走勢"] + sub_indicators
+        else:
+            row_heights    = [1.0]
+            subplot_titles = ["價格走勢"]
+
+        fig_tech = make_subplots(
+            rows=n_rows,
+            cols=1,
+            shared_xaxes=True,
+            row_heights=row_heights,
+            vertical_spacing=0.05,
+            subplot_titles=subplot_titles,
+        )
+
+        # 主圖：收盤價
+        fig_tech.add_trace(
+            go.Scatter(x=df.index, y=df["Close"], name="收盤價",
+                       line=dict(color="royalblue", width=1.5)),
+            row=1, col=1,
+        )
+
+        # 均線
+        if show_ma_chart:
+            ma_p    = params_dict.get("MA", {"short": 20, "long": 60})
+            short_p = int(ma_p["short"])
+            long_p  = int(ma_p["long"])
+            fig_tech.add_trace(
+                go.Scatter(x=df.index, y=df["Close"].rolling(short_p).mean(),
+                           name=f"MA{short_p}", line=dict(color="orange", width=1.2)),
+                row=1, col=1,
+            )
+            fig_tech.add_trace(
+                go.Scatter(x=df.index, y=df["Close"].rolling(long_p).mean(),
+                           name=f"MA{long_p}", line=dict(color="green", width=1.2)),
+                row=1, col=1,
+            )
+
+        # 布林通道
+        if show_bollinger_chart:
+            bb_p    = params_dict.get("Bollinger", {"n": 20, "k": 2.0})
+            bb_n    = int(bb_p["n"])
+            bb_k    = float(bb_p["k"])
+            bb_ma   = df["Close"].rolling(bb_n).mean()
+            bb_std  = df["Close"].rolling(bb_n).std()
+            bb_up   = bb_ma + bb_k * bb_std
+            bb_dn   = bb_ma - bb_k * bb_std
+            fig_tech.add_trace(
+                go.Scatter(x=df.index, y=bb_up, name="BB上軌",
+                           line=dict(color="rgba(128,0,128,0.6)", dash="dash", width=1)),
+                row=1, col=1,
+            )
+            fig_tech.add_trace(
+                go.Scatter(x=df.index, y=bb_dn, name="BB下軌",
+                           line=dict(color="rgba(128,0,128,0.6)", dash="dash", width=1),
+                           fill="tonexty", fillcolor="rgba(128,0,128,0.05)"),
+                row=1, col=1,
+            )
+            fig_tech.add_trace(
+                go.Scatter(x=df.index, y=bb_ma, name="BB中線",
+                           line=dict(color="purple", width=1, dash="dot")),
+                row=1, col=1,
+            )
+
+        # 買賣點標記
+        if trades:
+            buy_dates_list  = [t["buy_date"]   for t in trades]
+            sell_dates_list = [t["sell_date"]  for t in trades]
+            buy_px_list     = [t["buy_price"]  for t in trades]
+            sell_px_list    = [t["sell_price"] for t in trades]
+
+            fig_tech.add_trace(
+                go.Scatter(
+                    x=buy_dates_list, y=buy_px_list,
+                    mode="markers", name="買入",
+                    marker=dict(symbol="triangle-up", size=14, color="green"),
+                    hovertemplate="買入<br>日期: %{x}<br>價格: %{y:.2f}<extra></extra>",
+                ),
+                row=1, col=1,
+            )
+            sell_hover = [
+                f"賣出<br>日期: {t['sell_date']}<br>價格: {t['sell_price']:.2f}"
+                f"<br>報酬: {t['return']*100:.2f}%"
+                for t in trades
+            ]
+            fig_tech.add_trace(
+                go.Scatter(
+                    x=sell_dates_list, y=sell_px_list,
+                    mode="markers", name="賣出",
+                    marker=dict(symbol="triangle-down", size=14, color="red"),
+                    text=sell_hover, hoverinfo="text",
+                ),
+                row=1, col=1,
+            )
+
+        # 副圖
+        for sub_idx, indicator in enumerate(sub_indicators, start=2):
+            if indicator == "KD":
+                if "K" in df.columns and "D" in df.columns:
+                    fig_tech.add_trace(
+                        go.Scatter(x=df.index, y=df["K"], name="K",
+                                   line=dict(color="blue", width=1.2)),
+                        row=sub_idx, col=1,
+                    )
+                    fig_tech.add_trace(
+                        go.Scatter(x=df.index, y=df["D"], name="D",
+                                   line=dict(color="orange", width=1.2)),
+                        row=sub_idx, col=1,
+                    )
+                    fig_tech.update_yaxes(range=[0, 100], row=sub_idx, col=1)
+
+            elif indicator == "MACD":
+                macd_p   = params_dict.get("MACD", {"fast_period": 12, "slow_period": 26, "signal_period": 9})
+                df_macd  = add_macd(df, macd_p.get("fast_period", 12),
+                                    macd_p.get("slow_period", 26),
+                                    macd_p.get("signal_period", 9))
+                hist_col = ["green" if v >= 0 else "red" for v in df_macd["MACD_hist"]]
+                fig_tech.add_trace(
+                    go.Bar(x=df_macd.index, y=df_macd["MACD_hist"],
+                           name="MACD Hist", marker_color=hist_col),
+                    row=sub_idx, col=1,
+                )
+                fig_tech.add_trace(
+                    go.Scatter(x=df_macd.index, y=df_macd["MACD"], name="MACD",
+                               line=dict(color="blue", width=1.2)),
+                    row=sub_idx, col=1,
+                )
+                fig_tech.add_trace(
+                    go.Scatter(x=df_macd.index, y=df_macd["MACD_signal"], name="Signal",
+                               line=dict(color="orange", width=1.2)),
+                    row=sub_idx, col=1,
+                )
+
+            elif indicator == "RSI":
+                rsi_p      = params_dict.get("RSI", {"period": 14, "buy": 30, "sell": 70})
+                rsi_period = int(rsi_p.get("period", 14))
+                delta      = df["Close"].diff()
+                gain       = delta.clip(lower=0).rolling(rsi_period).mean()
+                loss       = (-delta.clip(upper=0)).rolling(rsi_period).mean()
+                rs         = gain / loss.where(loss != 0, np.nan)
+                rsi_vals   = 100 - (100 / (1 + rs))
+                buy_lv     = float(rsi_p.get("buy", 30))
+                sell_lv    = float(rsi_p.get("sell", 70))
+                fig_tech.add_trace(
+                    go.Scatter(x=df.index, y=rsi_vals, name="RSI",
+                               line=dict(color="purple", width=1.5)),
+                    row=sub_idx, col=1,
+                )
+                fig_tech.add_hline(y=buy_lv,  line_dash="dash", line_color="green",
+                                   row=sub_idx, col=1)
+                fig_tech.add_hline(y=sell_lv, line_dash="dash", line_color="red",
+                                   row=sub_idx, col=1)
+                fig_tech.update_yaxes(range=[0, 100], row=sub_idx, col=1)
+
+        fig_tech.update_layout(
+            title="技術分析圖表",
+            template="plotly_white",
+            height=400 + 200 * len(sub_indicators),
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        xanchor="right", x=1),
+        )
+        st.plotly_chart(fig_tech, use_container_width=True)
 
         # ==============================
         # 📖 圖表解讀（放下面🔥）
