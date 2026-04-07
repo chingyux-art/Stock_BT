@@ -1,4 +1,4 @@
-def get_data_twse(stock_code, start=None, end=None):
+def get_data(stock_code, start=None, end=None):
     """
     從台灣證交所下載歷史數據（最可靠）
     """
