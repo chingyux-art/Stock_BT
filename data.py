@@ -1,213 +1,230 @@
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 import yfinance as yf
+import time
 
-def get_data(stock, start=None, end=None):
-    """
-    自動判斷是上市股票(TWSE)、上櫃股票(TPEX)，還是美股(yfinance)
-    """
-    if stock.isdigit() or (stock[0].isdigit() and '.' not in stock):
-        stock_code = stock.replace(".TW", "")
-        
-        # ✅ 先試試上市股票
-        df = get_data_twse(stock_code, start, end)
+# ==============================
+# ⭐ 主入口
+# ==============================
+def get_data(stock, start="2020-01-01", end=None):
+
+    if end is None:
+        end = datetime.now().strftime("%Y-%m-%d")
+
+    print(f"\n🔍 取得資料：{stock}")
+
+    # ==============================
+    # 台股（純數字）
+    # ==============================
+    if stock.isdigit():
+
+        # 1️⃣ 上市（TWSE）
+        df = get_data_twse_monthly(stock, start, end)
         if not df.empty:
+            print("✅ 使用 TWSE（上市）")
             return df
-        
-        # ✅ 再試試上櫃股票（使用新方法）
-        df = get_data_tpex_via_twse_api(stock_code, start, end)
+
+        # 2️⃣ 上櫃（TPEX）
+        df = get_data_tpex_monthly(stock, start, end)
         if not df.empty:
+            print("✅ 使用 TPEX（上櫃）")
             return df
-        
-        # ❌ 都找不到
-        print(f"❌ {stock_code} 在上市、上櫃都找不到")
-        return pd.DataFrame()
+
+        # 3️⃣ fallback → Yahoo
+        print("⚠️ 改用 Yahoo Finance")
+        df = get_data_yfinance_tw(stock, start, end)
+        return df
+
+    # ==============================
+    # 非台股（美股等）
+    # ==============================
     else:
         return get_data_yfinance(stock, start, end)
 
-def get_data_twse(stock_code, start=None, end=None):
-    """
-    台灣證交所（上市股票）
-    """
+
+# ==============================
+# ⭐ TWSE（月資料，快速）
+# ==============================
+def get_data_twse_monthly(stock_code, start, end):
+
     try:
-        import time
-        
-        if start is None:
-            start = "2020-01-01"
-        if end is None:
-            end = datetime.now().strftime("%Y-%m-%d")
-        
-        start_date = datetime.strptime(start, "%Y-%m-%d")
-        end_date = datetime.strptime(end, "%Y-%m-%d")
-        
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt   = datetime.strptime(end, "%Y-%m-%d")
+
         all_data = []
-        current_date = start_date
-        
-        print(f"📥 從台證所(上市)下載 {stock_code}（{start} ~ {end}）...")
-        
-        while current_date <= end_date:
-            date_str = current_date.strftime("%Y%m%d")
-            
-            try:
-                url = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
-                params = {
-                    "response": "json",
-                    "date": date_str,
-                    "stockNo": stock_code
-                }
-                
-                response = requests.get(url, params=params, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    if data.get("data"):
-                        for row in data["data"]:
-                            try:
-                                all_data.append({
-                                    "Date": row[0],
-                                    "Open": float(row[3]),
-                                    "High": float(row[4]),
-                                    "Low": float(row[5]),
-                                    "Close": float(row[6]),
-                                    "Volume": int(row[1].replace(",", ""))
-                                })
-                            except (ValueError, IndexError):
-                                continue
-                
-            except Exception as e:
-                pass
-            
-            current_date += timedelta(days=1)
+
+        print(f"📥 TWSE（月）下載 {stock_code}...")
+
+        current = start_dt.replace(day=1)
+
+        while current <= end_dt:
+
+            date_str = current.strftime("%Y%m01")
+
+            url = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
+            params = {
+                "response": "json",
+                "date": date_str,
+                "stockNo": stock_code
+            }
+
+            r = requests.get(url, params=params, timeout=10)
+
+            if r.status_code == 200:
+                data = r.json()
+
+                if data.get("data"):
+                    for row in data["data"]:
+                        try:
+                            all_data.append({
+                                "Date": row[0],
+                                "Open": float(row[3]),
+                                "High": float(row[4]),
+                                "Low": float(row[5]),
+                                "Close": float(row[6]),
+                                "Volume": int(row[1].replace(",", ""))
+                            })
+                        except:
+                            continue
+
+            current = (current.replace(day=28) + pd.Timedelta(days=4)).replace(day=1)
             time.sleep(0.1)
-        
-        if not all_data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(all_data)
-        df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d")
-        df.set_index("Date", inplace=True)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep='first')]
-        df.dropna(inplace=True)
-        
-        print(f"✅ 成功下載 {len(df)} 筆 {stock_code} 數據")
-        return df
-        
+
+        return clean_df(all_data)
+
     except Exception as e:
-        print(f"❌ 台證所錯誤 {stock_code}：{str(e)}")
+        print(f"❌ TWSE error: {e}")
         return pd.DataFrame()
 
-def get_data_tpex_via_twse_api(stock_code, start=None, end=None):
-    """
-    ✅ 使用 TWSE 即時行情 API 取得上櫃股票歷史資料
-    API: https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=otc_XXXX.tw
-    
-    這個 API 同時支援上市和上櫃股票，更穩定！
-    """
+
+# ==============================
+# ⭐ TPEX（月資料，正確來源）
+# ==============================
+def get_data_tpex_monthly(stock_code, start, end):
+
     try:
-        import time
-        
-        if start is None:
-            start = "2020-01-01"
-        if end is None:
-            end = datetime.now().strftime("%Y-%m-%d")
-        
-        start_date = datetime.strptime(start, "%Y-%m-%d")
-        end_date = datetime.strptime(end, "%Y-%m-%d")
-        
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt   = datetime.strptime(end, "%Y-%m-%d")
+
         all_data = []
-        current_date = start_date
-        
-        print(f"📥 從TWSE API(上櫃)下載 {stock_code}（{start} ~ {end}）...")
-        
-        while current_date <= end_date:
-            date_str = current_date.strftime("%Y%m%d")
-            
-            try:
-                # ✅ 使用 TWSE 即時行情 API（支援上櫃股票，前綴為 otc_）
-                url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
-                params = {
-                    "ex_ch": f"otc_{stock_code}.tw",
-                    "json": "1"
-                }
-                
-                response = requests.get(url, params=params, timeout=10)
-                response.encoding = 'utf-8'
-                
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        
-                        # ✅ API 返回結構：msgArray
-                        if data.get("msgArray"):
-                            for row in data["msgArray"]:
-                                try:
-                                    # 檢查是否是我們要找的股票
-                                    if row.get("c", "").strip() == stock_code:
-                                        all_data.append({
-                                            "Date": date_str,
-                                            "Open": float(row.get("o", 0)),
-                                            "High": float(row.get("h", 0)),
-                                            "Low": float(row.get("l", 0)),
-                                            "Close": float(row.get("z", 0)),
-                                            "Volume": int(float(row.get("v", 0))) * 1000  # 轉為股數
-                                        })
-                                        break
-                                except (ValueError, KeyError, TypeError):
-                                    continue
-                    except ValueError:
-                        # JSON 解析失敗，跳過該日期
-                        pass
-                
-            except Exception as e:
-                pass
-            
-            current_date += timedelta(days=1)
+
+        print(f"📥 TPEX（月）下載 {stock_code}...")
+
+        current = start_dt.replace(day=1)
+
+        while current <= end_dt:
+
+            # 民國年
+            year = current.year - 1911
+            month = current.month
+
+            date_str = f"{year}/{month:02d}"
+
+            url = "https://www.tpex.org.tw/web/stock/aftertrading/daily_trading_info/st43_result.php"
+            params = {
+                "l": "zh-tw",
+                "d": date_str,
+                "stkno": stock_code
+            }
+
+            r = requests.get(url, params=params, timeout=10)
+
+            if r.status_code == 200:
+                data = r.json()
+
+                if data.get("aaData"):
+                    for row in data["aaData"]:
+                        try:
+                            all_data.append({
+                                "Date": row[0],
+                                "Open": float(row[4]),
+                                "High": float(row[5]),
+                                "Low": float(row[6]),
+                                "Close": float(row[2]),
+                                "Volume": int(row[1].replace(",", ""))
+                            })
+                        except:
+                            continue
+
+            current = (current.replace(day=28) + pd.Timedelta(days=4)).replace(day=1)
             time.sleep(0.1)
-        
-        if not all_data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(all_data)
-        df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d")
-        df.set_index("Date", inplace=True)
-        df = df.sort_index()
-        df = df[~df.index.duplicated(keep='first')]
-        df.dropna(inplace=True)
-        
-        print(f"✅ 成功下載 {len(df)} 筆 {stock_code} 數據")
-        return df
-        
+
+        return clean_df(all_data)
+
     except Exception as e:
-        print(f"❌ TWSE API 錯誤 {stock_code}：{str(e)}")
+        print(f"❌ TPEX error: {e}")
         return pd.DataFrame()
 
-def get_data_yfinance(stock, start=None, end=None):
-    """使用 yfinance 獲取美股數據"""
-    try:
-        if stock.isdigit() or (stock[0].isdigit() and '.' not in stock):
-            stock = f"{stock}.TW"
-        
-        print(f"📥 從 Yahoo Finance 下載 {stock}...")
-        
-        df = yf.download(stock, start=start, end=end, progress=False)
-        
-        if df.empty:
-            print(f"❌ yfinance 無 {stock} 的數據")
-            return pd.DataFrame()
-        
-        if isinstance(df.columns, pd.MultiIndex):
-            df = df.droplevel(1, axis=1)
-        
-        df.columns = df.columns.str.upper()
-        df.dropna(inplace=True)
-        
-        print(f"✅ 成功下載 {len(df)} 筆 {stock} 數據")
-        
-        return df
-        
-    except Exception as e:
-        print(f"❌ yfinance 錯誤 {stock}：{str(e)}")
+
+# ==============================
+# ⭐ Yahoo（台股）
+# ==============================
+def get_data_yfinance_tw(stock, start, end):
+
+    # 先試上市
+    df = yf.download(f"{stock}.TW", start=start, end=end, progress=False)
+
+    if df.empty:
+        # 再試上櫃
+        df = yf.download(f"{stock}.TWO", start=start, end=end, progress=False)
+
+    return format_yf(df)
+
+
+# ==============================
+# ⭐ Yahoo（全球）
+# ==============================
+def get_data_yfinance(stock, start, end):
+
+    print(f"📥 Yahoo 下載 {stock}...")
+
+    df = yf.download(stock, start=start, end=end, progress=False)
+
+    return format_yf(df)
+
+
+# ==============================
+# ⭐ 格式整理
+# ==============================
+def clean_df(data):
+
+    if not data:
         return pd.DataFrame()
+
+    df = pd.DataFrame(data)
+
+    # 日期轉換（兼容民國/西元）
+    try:
+        df["Date"] = pd.to_datetime(df["Date"], format="%Y/%m/%d")
+    except:
+        df["Date"] = pd.to_datetime(df["Date"])
+
+    df.set_index("Date", inplace=True)
+    df = df.sort_index()
+    df = df[~df.index.duplicated()]
+
+    df.dropna(inplace=True)
+
+    print(f"✅ 共 {len(df)} 筆")
+
+    return df
+
+
+def format_yf(df):
+
+    if df.empty:
+        print("❌ Yahoo 無資料")
+        return pd.DataFrame()
+
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.droplevel(1, axis=1)
+
+    df.columns = df.columns.str.capitalize()
+
+    df = df[["Open", "High", "Low", "Close", "Volume"]]
+    df.dropna(inplace=True)
+
+    print(f"✅ Yahoo {len(df)} 筆")
+
+    return df
