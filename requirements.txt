@@ -1,6 +1,7 @@
 pandas
 numpy
 yfinance
+finmind
 ta
 streamlit
 matplotlib
