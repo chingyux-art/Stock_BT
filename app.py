@@ -9,6 +9,12 @@ from indicators import add_indicators
 from indicators import compute_kd, add_macd
 from strategies import *
 from backtest import *
+from conditions import (
+    CONDITION_TYPES,
+    CONDITION_PARAMS,
+    check_condition,
+    combine_signals,
+)
 #圖表亂碼問題
 import matplotlib.pyplot as plt
 
@@ -79,6 +85,105 @@ if "MACD" in selected:
         "slow_period": st.slider("MACD 慢速期", 20, 50, 26),
         "signal_period": st.slider("MACD Signal 期", 3, 15, 9)
     }
+
+# ==============================
+# 進出場條件設定
+# ==============================
+def render_condition_ui(prefix: str, label: str):
+    """
+    渲染一組「最多 5 個條件 + 邏輯模式」的 UI，
+    返回 (conditions_cfg, logic_mode, min_count)。
+    conditions_cfg = list of (condition_type, params_dict)
+    """
+    st.subheader(label)
+
+    condition_names = list(CONDITION_TYPES.keys())
+    display_names   = ["(不設定)"] + [CONDITION_TYPES[k] for k in condition_names]
+
+    logic_mode_label = st.radio(
+        f"{label} 邏輯模式",
+        ["全部符合 (AND)", "至少 N 項符合 (OR)"],
+        key=f"{prefix}_logic_mode",
+        horizontal=True,
+    )
+    logic_mode = "AND" if "AND" in logic_mode_label else "OR"
+
+    min_count = 1
+    if logic_mode == "OR":
+        min_count = st.number_input(
+            "最少符合幾項",
+            min_value=1,
+            max_value=5,
+            value=1,
+            key=f"{prefix}_min_count",
+        )
+
+    conditions_cfg = []
+    for i in range(1, 6):
+        col_sel, col_params = st.columns([2, 3])
+        with col_sel:
+            chosen_display = st.selectbox(
+                f"條件 {i}",
+                display_names,
+                key=f"{prefix}_cond_{i}",
+            )
+
+        if chosen_display == "(不設定)":
+            continue
+
+        # 反查 key
+        cond_key = condition_names[display_names.index(chosen_display) - 1]
+        param_defaults = CONDITION_PARAMS.get(cond_key, {})
+        param_values = {}
+
+        with col_params:
+            if "fast" in param_defaults:
+                param_values["fast"] = st.slider(
+                    f"快速期 (條件{i})", 5, 20,
+                    int(param_defaults["fast"]),
+                    key=f"{prefix}_cond_{i}_fast",
+                )
+            if "slow" in param_defaults:
+                param_values["slow"] = st.slider(
+                    f"慢速期 (條件{i})", 10, 60,
+                    int(param_defaults["slow"]),
+                    key=f"{prefix}_cond_{i}_slow",
+                )
+            if "sig" in param_defaults:
+                param_values["sig"] = st.slider(
+                    f"Signal 期 (條件{i})", 3, 15,
+                    int(param_defaults["sig"]),
+                    key=f"{prefix}_cond_{i}_sig",
+                )
+            if "period" in param_defaults:
+                param_values["period"] = st.slider(
+                    f"週期 (條件{i})", 5, 120,
+                    int(param_defaults["period"]),
+                    key=f"{prefix}_cond_{i}_period",
+                )
+            if "buy" in param_defaults:
+                param_values["buy"] = st.slider(
+                    f"買進門檻 (條件{i})", 10, 50,
+                    int(param_defaults["buy"]),
+                    key=f"{prefix}_cond_{i}_buy",
+                )
+            if "sell" in param_defaults:
+                param_values["sell"] = st.slider(
+                    f"賣出門檻 (條件{i})", 50, 90,
+                    int(param_defaults["sell"]),
+                    key=f"{prefix}_cond_{i}_sell",
+                )
+
+        conditions_cfg.append((cond_key, param_values))
+
+    return conditions_cfg, logic_mode, int(min_count)
+
+
+with st.expander("⚙️ 自訂進場條件設定（最多 5 個）", expanded=False):
+    entry_conditions, entry_logic, entry_min = render_condition_ui("entry", "進場條件")
+
+with st.expander("⚙️ 自訂出場條件設定（最多 5 個）", expanded=False):
+    exit_conditions, exit_logic, exit_min = render_condition_ui("exit", "出場條件")
 
 # ==============================
 # 最佳化開關（要提前）
@@ -268,6 +373,34 @@ if st.button("Run Backtest"):
             signals.append(run_strategy(df, s, params_dict[s]))
 
     # ===== 合併訊號 =====
+    # ---- 自訂條件訊號 ----
+    if entry_conditions or exit_conditions:
+        # 為 KD 條件補齊 K/D 欄位
+        df_cond = df.copy()
+        if any(c in ("KD黃金交叉", "KD死亡交叉") for c, _ in (entry_conditions + exit_conditions)):
+            df_cond = compute_kd(df_cond)
+
+        custom_signal = pd.Series(0, index=df_cond.index)
+
+        if entry_conditions:
+            entry_bool_list = [
+                check_condition(df_cond, ctype, **cparams)
+                for ctype, cparams in entry_conditions
+            ]
+            entry_trigger = combine_signals(entry_bool_list, entry_logic, entry_min)
+            custom_signal[entry_trigger == 1] = 1
+
+        if exit_conditions:
+            exit_bool_list = [
+                check_condition(df_cond, ctype, **cparams)
+                for ctype, cparams in exit_conditions
+            ]
+            exit_trigger = combine_signals(exit_bool_list, exit_logic, exit_min)
+            # 出場訊號優先：若同一時間點同時觸發進/出場，以出場（-1）為準
+            custom_signal[exit_trigger == 1] = -1
+
+        signals.append(custom_signal)
+
     if not signals:
         st.error("沒有產生任何策略訊號")
         st.stop()
