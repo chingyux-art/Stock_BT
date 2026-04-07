@@ -22,7 +22,7 @@ st.title("Quant Backtest GUI")
 # 股票
 # ==============================
 stock = st.text_input("Stock", "2330.TW")
-st.caption("台股: 2330.TW | 美股: AAPL")
+st.caption("台股: 2330 | 美股: AAPL")
 
 # ==============================
 # 日期
