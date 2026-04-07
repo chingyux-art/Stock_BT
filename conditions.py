@@ -15,6 +15,8 @@ CONDITION_TYPES = {
     "收盤小於MA":    "收盤 < MA (指定週期)",
     "RSI超賣反彈":   "RSI 超賣反彈 (RSI 跌破買進門檻)",
     "RSI超買回吐":   "RSI 超買回吐 (RSI 突破賣出門檻)",
+    "交易量大於":    "Volume > X (百萬股)",
+    "交易量小於":    "Volume < X (百萬股)",
 }
 
 # 每種條件需要的參數及預設值
@@ -28,6 +30,8 @@ CONDITION_PARAMS = {
     "收盤小於MA":   {"period": 20},
     "RSI超賣反彈":  {"period": 14, "buy": 30},
     "RSI超買回吐":  {"period": 14, "sell": 70},
+    "交易量大於":   {"threshold": 10},
+    "交易量小於":   {"threshold": 10},
 }
 
 
@@ -96,6 +100,18 @@ def check_condition(df: pd.DataFrame, condition_type: str, **params) -> pd.Serie
         rs     = gain / loss.replace(0, np.nan)
         rsi    = 100 - (100 / (1 + rs))
         return (rsi > sell) & (rsi.shift(1) <= sell)
+
+    elif condition_type == "交易量大於":
+        if "Volume" not in df.columns:
+            return false_series
+        threshold = float(params.get("threshold", 10)) * 1_000_000
+        return df["Volume"] > threshold
+
+    elif condition_type == "交易量小於":
+        if "Volume" not in df.columns:
+            return false_series
+        threshold = float(params.get("threshold", 10)) * 1_000_000
+        return df["Volume"] < threshold
 
     return false_series
 

@@ -9,6 +9,7 @@ def run_backtest(df, signal):
 
     position = 0
     buy_price = 0
+    buy_idx = 0
 
     equity = [1]
     trades = []
@@ -21,16 +22,20 @@ def run_backtest(df, signal):
         if signal.iloc[i] == 1 and position == 0:
             position = 1
             buy_price = price
+            buy_idx = i
 
         # 出場
         elif signal.iloc[i] == -1 and position == 1:
             position = 0
+            sell_idx = i
 
             ret = (price - buy_price) / buy_price
             trades.append({
-                "return": ret,
+                "buy_date": df.index[buy_idx],
+                "sell_date": df.index[sell_idx],
                 "buy_price": buy_price,
-                "sell_price": price
+                "sell_price": price,
+                "return": ret,
             })
 
         # 每日 equity
@@ -43,11 +48,14 @@ def run_backtest(df, signal):
     # 強制平倉
     if position == 1:
         price = df["Close"].iloc[-1]
+        sell_idx = len(df) - 1
         ret = (price - buy_price) / buy_price
         trades.append({
-            "return": ret,
+            "buy_date": df.index[buy_idx],
+            "sell_date": df.index[sell_idx],
             "buy_price": buy_price,
-            "sell_price": price
+            "sell_price": price,
+            "return": ret,
         })
 
     return trades, equity
