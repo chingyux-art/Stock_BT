@@ -250,3 +250,36 @@ def optimize_ma_rsi(df, backtest_func, performance_func):
     result_df = result_df.sort_values(by="score", ascending=False)
 
     return result_df
+
+#====== MACD ======
+def macd_strategy(df, fast_period=12, slow_period=26, signal_period=9):
+
+    df = df.copy()
+
+    close = df["Close"]
+
+    ema_fast = close.ewm(span=fast_period, adjust=False).mean()
+    ema_slow = close.ewm(span=slow_period, adjust=False).mean()
+
+    macd = ema_fast - ema_slow
+    signal_line = macd.ewm(span=signal_period, adjust=False).mean()
+
+    # ========= 訊號 =========
+    df["signal"] = 0
+
+    # 金叉：MACD 上穿 Signal
+    cross_up = (
+        (macd > signal_line) &
+        (macd.shift(1) <= signal_line.shift(1))
+    )
+
+    # 死叉：MACD 下穿 Signal
+    cross_down = (
+        (macd < signal_line) &
+        (macd.shift(1) >= signal_line.shift(1))
+    )
+
+    df.loc[cross_up, "signal"] = 1
+    df.loc[cross_down, "signal"] = -1
+
+    return df["signal"]

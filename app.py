@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from data import get_data
 from indicators import add_indicators
-from indicators import compute_kd
+from indicators import compute_kd, add_macd
 from strategies import *
 from backtest import *
 #圖表亂碼問題
@@ -36,7 +36,7 @@ st.caption("時間格式(yyyy, mm, dd)")
 # ==============================
 selected = st.multiselect(
     "策略組合",
-    ["MA", "RSI", "KD", "Bollinger"],
+    ["MA", "RSI", "KD", "Bollinger", "MACD"],
     default=["MA"]
 )
 
@@ -71,6 +71,13 @@ if "KD" in selected:
         "d_period": st.slider("KD D period", 1, 10, 3),
         "low": st.slider("KD low", 0, 50, 20),
         "high": st.slider("KD high", 50, 100, 80)
+    }
+
+if "MACD" in selected:
+    params_dict["MACD"] = {
+        "fast_period": st.slider("MACD 快速期", 5, 20, 12),
+        "slow_period": st.slider("MACD 慢速期", 20, 50, 26),
+        "signal_period": st.slider("MACD Signal 期", 3, 15, 9)
     }
 
 # ==============================
@@ -123,6 +130,15 @@ def get_param_grid(strategy):
             for high in range(60, 90, 5)
         ]
 
+    elif strategy == "MACD":
+        return [
+            {"fast_period": f, "slow_period": s, "signal_period": sig}
+            for f in range(5, 20, 2)
+            for s in range(20, 50, 5)
+            for sig in range(3, 15, 2)
+            if f < s
+        ]
+
 # ==============================
 # 統一策略執行器
 # ==============================
@@ -145,6 +161,9 @@ def run_strategy(df, strategy, p):
             d_period=p["d_period"]
         )
         return kd_strategy(df_kd, p["low"], p["high"])
+
+    elif strategy == "MACD":
+        return macd_strategy(df, p["fast_period"], p["slow_period"], p["signal_period"])
 
 # ==============================
 # 統一策略執行器
@@ -303,6 +322,11 @@ if st.button("Run Backtest"):
                     st.write(f"D 期：{params['d_period']}")
                     st.write(f"低檔：{params['low']}")
                     st.write(f"高檔：{params['high']}")
+
+                elif strat == "MACD":
+                    st.write(f"快速期：{params['fast_period']}")
+                    st.write(f"慢速期：{params['slow_period']}")
+                    st.write(f"Signal 期：{params['signal_period']}")
 
             st.subheader("🏆 最佳化結果 Top 5")
             for s in opt_results:
