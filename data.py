@@ -15,8 +15,8 @@ def get_data(stock, start=None, end=None):
         if not df.empty:
             return df
         
-        # ✅ 再試試上櫃股票
-        df = get_data_tpex(stock_code, start, end)
+        # ✅ 再試試上櫃股票（使用新方法）
+        df = get_data_tpex_via_twse_api(stock_code, start, end)
         if not df.empty:
             return df
         
@@ -99,10 +99,12 @@ def get_data_twse(stock_code, start=None, end=None):
         print(f"❌ 台證所錯誤 {stock_code}：{str(e)}")
         return pd.DataFrame()
 
-def get_data_tpex(stock_code, start=None, end=None):
+def get_data_tpex_via_twse_api(stock_code, start=None, end=None):
     """
-    臺灣證券櫃檯買賣中心（上櫃股票）
-    API: https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote.php
+    ✅ 使用 TWSE 即時行情 API 取得上櫃股票歷史資料
+    API: https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=otc_XXXX.tw
+    
+    這個 API 同時支援上市和上櫃股票，更穩定！
     """
     try:
         import time
@@ -118,41 +120,46 @@ def get_data_tpex(stock_code, start=None, end=None):
         all_data = []
         current_date = start_date
         
-        print(f"📥 從TPEX(上櫃)下載 {stock_code}（{start} ~ {end}）...")
+        print(f"📥 從TWSE API(上櫃)下載 {stock_code}（{start} ~ {end}）...")
         
         while current_date <= end_date:
-            # ✅ TPEX 日期格式：YYYY/MM/DD
-            date_str = current_date.strftime("%Y/%m/%d")
+            date_str = current_date.strftime("%Y%m%d")
             
             try:
-                url = "https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote.php"
+                # ✅ 使用 TWSE 即時行情 API（支援上櫃股票，前綴為 otc_）
+                url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
                 params = {
-                    "l": "zh-tw",
-                    "d": date_str,
-                    "s": "0,asc,0"
+                    "ex_ch": f"otc_{stock_code}.tw",
+                    "json": "1"
                 }
                 
                 response = requests.get(url, params=params, timeout=10)
+                response.encoding = 'utf-8'
                 
                 if response.status_code == 200:
-                    data = response.json()
-                    
-                    # ✅ TPEX 返回結構：data.aaData
-                    if data.get("aaData"):
-                        for row in data["aaData"]:
-                            try:
-                                # row = [股票代號, 股票名稱, 成交量, 成交金額, 開盤, 最高, 最低, 收盤, 漲跌, ...]
-                                if row[0].strip() == stock_code:
-                                    all_data.append({
-                                        "Date": current_date.strftime("%Y%m%d"),
-                                        "Open": float(row[4]),
-                                        "High": float(row[5]),
-                                        "Low": float(row[6]),
-                                        "Close": float(row[7]),
-                                        "Volume": int(row[2].replace(",", "") if isinstance(row[2], str) else row[2])
-                                    })
-                            except (ValueError, IndexError, AttributeError):
-                                continue
+                    try:
+                        data = response.json()
+                        
+                        # ✅ API 返回結構：msgArray
+                        if data.get("msgArray"):
+                            for row in data["msgArray"]:
+                                try:
+                                    # 檢查是否是我們要找的股票
+                                    if row.get("c", "").strip() == stock_code:
+                                        all_data.append({
+                                            "Date": date_str,
+                                            "Open": float(row.get("o", 0)),
+                                            "High": float(row.get("h", 0)),
+                                            "Low": float(row.get("l", 0)),
+                                            "Close": float(row.get("z", 0)),
+                                            "Volume": int(float(row.get("v", 0))) * 1000  # 轉為股數
+                                        })
+                                        break
+                                except (ValueError, KeyError, TypeError):
+                                    continue
+                    except ValueError:
+                        # JSON 解析失敗，跳過該日期
+                        pass
                 
             except Exception as e:
                 pass
@@ -174,7 +181,7 @@ def get_data_tpex(stock_code, start=None, end=None):
         return df
         
     except Exception as e:
-        print(f"❌ TPEX錯誤 {stock_code}：{str(e)}")
+        print(f"❌ TWSE API 錯誤 {stock_code}：{str(e)}")
         return pd.DataFrame()
 
 def get_data_yfinance(stock, start=None, end=None):
