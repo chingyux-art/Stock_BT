@@ -10,8 +10,8 @@ def ma_strategy(df, short=20, long=60):
     df = df.copy()
 
     # ========= MA =========
-    df["MA_short"] = df["Close"].rolling(int(short)).mean()
-    df["MA_long"]  = df["Close"].rolling(int(long)).mean()
+    df["MA_short"] = df["CLOSE"].rolling(int(short)).mean()  # ✅ 改成 CLOSE
+    df["MA_long"]  = df["CLOSE"].rolling(int(long)).mean()   # ✅ 改成 CLOSE
 
     # ========= 訊號 =========
     df["signal"] = 0
@@ -37,7 +37,7 @@ def rsi_strategy(df, period=14, buy=30, sell=70):
 
     df = df.copy()
 
-    delta = df["Close"].diff()
+    delta = df["CLOSE"].diff()  # ✅ 改成 CLOSE
 
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -108,8 +108,8 @@ def bb_strategy(df, n=20, k=2):
 
     # ===== 布林通道 =====
     # n:週期（MA長度）, k: 標準差倍數
-    df["MA"] = df["Close"].rolling(n).mean()
-    df["STD"] = df["Close"].rolling(n).std()
+    df["MA"] = df["CLOSE"].rolling(n).mean()  # ✅ 改成 CLOSE
+    df["STD"] = df["CLOSE"].rolling(n).std()  # ✅ 改成 CLOSE
 
     df["BB_H"] = df["MA"] + k * df["STD"]
     df["BB_L"] = df["MA"] - k * df["STD"]
@@ -117,8 +117,8 @@ def bb_strategy(df, n=20, k=2):
     # ===== 訊號 =====
     signal = np.zeros(len(df))
 
-    signal[df["Close"] < df["BB_L"]] = 1   # 買
-    signal[df["Close"] > df["BB_H"]] = -1  # 賣
+    signal[df["CLOSE"] < df["BB_L"]] = 1   # ✅ 改成 CLOSE  # 買
+    signal[df["CLOSE"] > df["BB_H"]] = -1  # ✅ 改成 CLOSE  # 賣
 
     return pd.Series(signal, index=df.index)
 
@@ -146,11 +146,11 @@ def ma_rsi_strategy(df, ma_short=20, ma_long=60, rsi_period=14, buy=30, sell=70)
     df = df.copy()
 
     # ========= MA =========
-    df["MA_short"] = df["Close"].rolling(ma_short).mean()
-    df["MA_long"]  = df["Close"].rolling(ma_long).mean()
+    df["MA_short"] = df["CLOSE"].rolling(ma_short).mean()  # ✅ 改成 CLOSE
+    df["MA_long"]  = df["CLOSE"].rolling(ma_long).mean()   # ✅ 改成 CLOSE
 
     # ========= RSI =========
-    delta = df["Close"].diff()
+    delta = df["CLOSE"].diff()  # ✅ 改成 CLOSE
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
