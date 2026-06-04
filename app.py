@@ -12,11 +12,13 @@ from strategies import *
 from backtest import *
 from conditions import (
     CONDITION_TYPES,
+    CONDITION_CATEGORIES,
     CONDITION_PARAMS,
     check_condition,
     combine_signals,
 )
 
+st.set_page_config(layout="wide")
 st.title("Stock Backtest Application")
 
 # ==============================
@@ -42,7 +44,7 @@ selected = st.multiselect(
 )
 
 # ==============================
-# 參數 UI（⭐關鍵）
+# 參數 UI
 # ==============================
 params_dict = {}
 
@@ -82,125 +84,22 @@ if "MACD" in selected:
     }
 
 # ==============================
-# 進出場條件設定
+# 回測模式選擇（互斥）
 # ==============================
-def render_condition_ui(prefix: str, label: str):
-    """
-    渲染一組「最多 5 個條件 + 邏輯模式」的 UI，
-    返回 (conditions_cfg, logic_mode, min_count)。
-    conditions_cfg = list of (condition_type, params_dict)
-    """
-    st.subheader(label)
+st.markdown("---")
+st.subheader("⚙️ 回測模式選擇")
 
-    condition_names = list(CONDITION_TYPES.keys())
-    display_names   = ["(不設定)"] + [CONDITION_TYPES[k] for k in condition_names]
+mode = st.radio(
+    "選擇回測方式",
+    ["🎯 自訂進出場條件", "🔄 策略最佳化"],
+    horizontal=True
+)
 
-    logic_mode_label = st.radio(
-        f"{label} 邏輯模式",
-        ["全部符合 (AND)", "至少 N 項符合 (OR)"],
-        key=f"{prefix}_logic_mode",
-        horizontal=True,
-    )
-    logic_mode = "AND" if "AND" in logic_mode_label else "OR"
+optimize = (mode == "🔄 策略最佳化")
 
-    min_count = 1
-    if logic_mode == "OR":
-        min_count = st.number_input(
-            "最少符合幾項",
-            min_value=1,
-            max_value=5,
-            value=1,
-            key=f"{prefix}_min_count",
-        )
-
-    conditions_cfg = []
-    for i in range(1, 6):
-        col_sel, col_params = st.columns([2, 3])
-        with col_sel:
-            chosen_display = st.selectbox(
-                f"條件 {i}",
-                display_names,
-                key=f"{prefix}_cond_{i}",
-            )
-
-        if chosen_display == "(不設定)":
-            continue
-
-        # 反查 key
-        cond_key = condition_names[display_names.index(chosen_display) - 1]
-        param_defaults = CONDITION_PARAMS.get(cond_key, {})
-        param_values = {}
-
-        with col_params:
-            if "fast" in param_defaults:
-                param_values["fast"] = st.slider(
-                    f"快速期 (條件{i})", 5, 20,
-                    int(param_defaults["fast"]),
-                    key=f"{prefix}_cond_{i}_fast",
-                )
-            if "slow" in param_defaults:
-                param_values["slow"] = st.slider(
-                    f"慢速期 (條件{i})", 10, 60,
-                    int(param_defaults["slow"]),
-                    key=f"{prefix}_cond_{i}_slow",
-                )
-            if "sig" in param_defaults:
-                param_values["sig"] = st.slider(
-                    f"Signal 期 (條件{i})", 3, 15,
-                    int(param_defaults["sig"]),
-                    key=f"{prefix}_cond_{i}_sig",
-                )
-            if "period" in param_defaults:
-                param_values["period"] = st.slider(
-                    f"週期 (條件{i})", 5, 120,
-                    int(param_defaults["period"]),
-                    key=f"{prefix}_cond_{i}_period",
-                )
-            if "buy" in param_defaults:
-                param_values["buy"] = st.slider(
-                    f"買進門檻 (條件{i})", 10, 50,
-                    int(param_defaults["buy"]),
-                    key=f"{prefix}_cond_{i}_buy",
-                )
-            if "sell" in param_defaults:
-                param_values["sell"] = st.slider(
-                    f"賣出門檻 (條件{i})", 50, 90,
-                    int(param_defaults["sell"]),
-                    key=f"{prefix}_cond_{i}_sell",
-                )
-            if "threshold" in param_defaults:
-                param_values["threshold"] = st.slider(
-                    f"交易量門檻 (張數) (條件{i})", 1, 10000,
-                    int(param_defaults["threshold"]),
-                    key=f"{prefix}_cond_{i}_threshold",
-                )
-            if "multiple" in param_defaults:
-                param_values["multiple"] = st.slider(
-                    f"倍數 (條件{i})", 1.0, 5.0,
-                    float(param_defaults["multiple"]),
-                    step=0.1,
-                    key=f"{prefix}_cond_{i}_multiple",
-                )
-
-        conditions_cfg.append((cond_key, param_values))
-
-    return conditions_cfg, logic_mode, int(min_count)
-
-
-with st.expander("⚙️ 自訂進場條件設定（最多 5 個）", expanded=False):
-    entry_conditions, entry_logic, entry_min = render_condition_ui("entry", "進場條件")
-
-with st.expander("⚙️ 自訂出場條件設定（最多 5 個）", expanded=False):
-    exit_conditions, exit_logic, exit_min = render_condition_ui("exit", "出場條件")
-
-# ==============================
-# 最佳化開關（要提前）
-# ==============================
-optimize = st.checkbox("啟用最佳化")
-
-# ⭐ 新增：最佳化說明
+# 最佳化說明
 if optimize:
-    with st.expander("📘 最佳化使用說明", expanded=True):
+    with st.expander("📘 策略最佳化使用說明", expanded=True):
         st.markdown("""
 ### 🎯 最佳化邏輯說明
 
@@ -222,10 +121,209 @@ if optimize:
 - 📊 結果會顯示 Top 5 最優參數組合
 - ⚠️ 過去績效不代表未來走勢，建議在實盤前進行充分驗證
         """)
+    
+    # 最佳化模式下不顯示自訂條件
+    entry_conditions = []
+    exit_conditions = []
+    use_stop_loss = False
+
+else:
+    # ==============================
+    # 技術指標說明（摺疊展開）
+    # ==============================
+    with st.expander("📚 技術指標說明與建議", expanded=False):
+        
+        tabs = st.tabs(["KD 隨機指標", "MACD", "RSI", "布林通道"])
+        
+        with tabs[0]:
+            st.markdown("""
+### KD 指標（隨機指標，Stochastic Oscillator）
+
+KD 指標是由 George Lane 提出的技術指標，用來衡量股價在最近一段時間內的相對強弱位置，數值範圍在 0~100 之間。
+
+**計算方式**：
+- %K線（快速線）= [(當日收盤價 - 過去N天最低價) ÷ (過去N天最高價 - 過去N天最低價)] × 100
+- %D線（慢速線）= %K線的 M 期簡單移動平均線（通常 M=3）
+
+**標準參數**：(14,3,3) 或 (9,3,3)
+
+**交易信號**：
+- K線向上穿越D線 = **金叉（買進訊號）**
+- K線向下穿越D線 = **死叉（賣出訊號）**
+- K > 80 = **超買（可能回檔）**
+- K < 20 = **超賣（可能反彈）**
+
+#### 📊 參數建議表
+
+| 交易類型 | 建議參數 | 特色 | 適合時間框架 | 注意事項 |
+|---------|---------|------|------------|---------|
+| 當日沖/極短線 | (5,3,3) 或 (7,3,3) | 極敏感，訊號多 | 1~15分鐘線 | 假訊號非常多 |
+| 短線/波段（最推薦） | (9,3,3) | 平衡，適合台股個股 | 日線 | 台股主流設定 |
+| 中線波段/趨勢 | (14,3,3) | 較平滑，減少噪音 | 日線~周線 | 假訊號較少 |
+| 長線/存股 | (21,3,3) 或 (36,5,5) | 更穩定，訊號少 | 周線 | 搭配均線使用 |
+            """)
+        
+        with tabs[1]:
+            st.markdown("""
+### MACD（移動平均收斂散度）
+
+MACD 是由 Gerald Appel 提出的技術分析中最受歡迎的趨勢指標之一。
+
+**組成成分**：
+- **MACD線**（快線）= 短期 EMA(12) - 長期 EMA(26)
+- **訊號線（Signal Line）** = MACD線的 9日 EMA
+- **柱狀圖（Histogram）** = MACD線 - 訊號線
+
+**交易信號**：
+- **由零翻正**：MACD 從負值轉為正值（趨勢向上）
+- **黃金交叉**：MACD 上穿 Signal 線（買進訊號）
+- **死亡交叉**：MACD 下穿 Signal 線（賣出訊號）
+
+#### 📊 參數建議表
+
+| 交易類型 | 建議參數 | 特色 | 適合時間框架 |
+|---------|---------|------|------------|
+| 當日沖/極短線 | (5,13,9) 或 (8,17,9) | 極敏感，訊號多 | 5分~60分線 |
+| 短線/波段（最推薦） | (12,26,9) | 平衡，假訊號適中 | 日線 |
+| 中線波段 | (12,26,9) 或 (19,39,9) | 較平滑，可靠性較高 | 日線 |
+| 長線/趨勢 | (19,39,9) 或 (12,26,12) | 訊號少，適合抓大趨勢 | 日線~周線 |
+            """)
+        
+        with tabs[2]:
+            st.markdown("""
+### RSI（Relative Strength Index，相對強弱指數）
+
+RSI 用來衡量股價漲跌的強弱程度，範圍在 0~100
+
+**計算方式**：
+1. 取過去 N 天（預設 N=14）的平均漲幅（Average Gain）與平均跌幅（Average Loss）
+2. 相對強弱值 RS = 平均漲幅 ÷ 平均跌幅
+3. RSI = 100 - 100 / (1 + RS)
+
+**交易信號**：
+- RSI < 30（或自訂值） = **超賣（可能反彈）** → **買進信號**
+- RSI > 70（或自訂值） = **超買（可能回檔）** → **賣出信號**
+
+#### 📊 參數建議表
+
+| 交易類型 | 建議週期 | 超買/超賣線 | 特色 | 適合時間框架 |
+|---------|---------|----------|------|------------|
+| 當日沖/極短線 | 5~9 | 75/25 或 80/20 | 訊號非常敏感 | 1~15分鐘線 |
+| 短線/波段（最推薦） | 14 | 70/30 | 平衡，假訊號適中 | 日線 |
+| 中線波段 | 14~21 | 70/30 或 75/25 | 較平滑，可靠性較高 | 日線 |
+| 長線/趨勢 | 21~50 | 75/25 或 80/20 | 訊號少，適合大趨勢 | 日線~周線 |
+            """)
+        
+        with tabs[3]:
+            st.markdown("""
+### 布林通道（Bollinger Bands）
+
+布林通道是由 John Bollinger 提出的技術指標，用來衡量股價波動性與相對位置。
+
+**組成成分**：
+- **中軌** = 過去 20 日簡單移動平均線（SMA）
+- **上軌** = 中軌 + 2 倍標準差
+- **下軌** = 中軌 - 2 倍標準差
+
+**通道特性**：
+- **變寬** = 波動增大
+- **變窄（Squeeze）** = 預示即將突破
+- **靠近上軌** = 偏強（超買）
+- **靠近下軌** = 偏弱（超賣）
+
+#### 📊 參數建議表
+
+| 交易類型 | 建議Period | 建議Std Dev | 特色 | 適合時間框架 |
+|---------|----------|----------|------|------------|
+| 短線/當日沖 | 10~15 | 1.5~2.0 | 更敏感，訊號多 | 5分~1小時 |
+| 波段交易（最推薦） | 20 | 2.0 | 平衡，假訊號較少 | 日線 |
+| 中長線/趨勢 | 50 | 2.2~2.5 | 更平滑，減少噪音 | 日線~周線 |
+| 超長線 | 100~200 | 2.5~3.0 | 捕捉大趨勢，訊號很少 | 周線 |
+            """)
+    
+    # ==============================
+    # 簡化版進出場條件設定
+    # ==============================
+    st.markdown("---")
+    st.subheader("🎯 自訂進出場條件")
+    
+    col_entry, col_exit = st.columns(2)
+    
+    def render_simple_condition(prefix: str):
+        """簡化版條件設定"""
+        conditions = []
+        
+        for i in range(1, 3):  # 最多 2 個條件
+            with st.container():
+                st.write(f"**條件 {i}**")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                # 選擇條件類別
+                with col1:
+                    category = st.selectbox(
+                        "類別",
+                        ["(不設定)"] + list(CONDITION_CATEGORIES.keys()),
+                        key=f"{prefix}_cat_{i}",
+                        index=0
+                    )
+                
+                if category == "(不設定)":
+                    continue
+                
+                # 選擇具體信號
+                with col2:
+                    signals = CONDITION_CATEGORIES[category]["signals"]
+                    signal = st.selectbox(
+                        "信號",
+                        list(signals.keys()),
+                        key=f"{prefix}_sig_{i}",
+                        format_func=lambda x: signals[x]
+                    )
+                
+                # 設置參數
+                with col3:
+                    st.write("**參數**")
+                    param_defaults = CONDITION_PARAMS.get(signal, {})
+                    param_values = {}
+                    
+                    for param_name, default_val in param_defaults.items():
+                        if isinstance(default_val, int):
+                            param_values[param_name] = st.number_input(
+                                f"{param_name}", 
+                                min_value=0, 
+                                value=int(default_val),
+                                key=f"{prefix}_{signal}_{param_name}_{i}"
+                            )
+                        else:
+                            param_values[param_name] = st.number_input(
+                                f"{param_name}", 
+                                value=float(default_val),
+                                step=0.1,
+                                key=f"{prefix}_{signal}_{param_name}_{i}"
+                            )
+                
+                conditions.append((signal, param_values))
+        
+        return conditions
+    
+    with col_entry:
+        st.write("### 📈 進場條件")
+        entry_conditions = render_simple_condition("entry")
+    
+    with col_exit:
+        st.write("### 📉 出場條件")
+        exit_conditions = render_simple_condition("exit")
+        
+        # 停損選項
+        use_stop_loss = st.checkbox("✋ 啟用 10% 停損", key="stop_loss_cb")
+        if use_stop_loss:
+            exit_conditions.append(("停損_虧損10%", {}))
 
 # ==============================
-# 📋 動態參數說明欄（在 Run Backtest 之前）
+# 📋 動態參數說明欄
 # ==============================
+st.markdown("---")
 st.subheader("📋 回測參數設定說明")
 
 with st.expander("詳細參數配置", expanded=True):
@@ -239,91 +337,58 @@ with st.expander("詳細參數配置", expanded=True):
         st.write(f"**策略組合:** {', '.join(selected) if selected else '(未選擇)'}")
         
     with col2:
-        st.markdown("### ⚙️ 最優化設定")
+        st.markdown("### ⚙️ 回測模式")
         if optimize:
-            st.write("✅ **最佳化:** 啟用")
-            st.write("**評分方式:** Return × 0.5 + Sharpe × 0.3 + Winrate × 0.2")
+            st.write("🔄 **策略最佳化模式**")
+            st.write("自動搜尋各策略的最優參數")
         else:
-            st.write("❌ **最佳化:** 停用")
-            st.write("**使用模式:** 手動參數設定")
+            st.write("🎯 **自訂進出場條件模式**")
+            st.write("使用自訂買賣信號進行回測")
     
     # 策略參數說明（動態）
-    st.markdown("### 📌 策略參數設定")
-    
-    param_info = []
-    
-    if "MA" in selected:
-        params_used = params_dict.get("MA", {})
-        param_info.append(f"""
+    if optimize:
+        st.markdown("### 📌 策略參數設定")
+        
+        param_info = []
+        
+        if "MA" in selected:
+            params_used = params_dict.get("MA", {})
+            param_info.append(f"""
 **🔹 MA 均線策略**
 - 短均線週期: **{params_used.get('short', 'N/A')}**
 - 長均線週期: **{params_used.get('long', 'N/A')}**
-- 📖 邏輯: 短均線 ↑ 穿過長均線 = 買入信號 | 短均線 ↓ 穿過長均線 = 賣出信號
-        """)
-    
-    if "RSI" in selected:
-        params_used = params_dict.get("RSI", {})
-        param_info.append(f"""
+            """)
+        
+        if "RSI" in selected:
+            params_used = params_dict.get("RSI", {})
+            param_info.append(f"""
 **🔹 RSI 相對強弱指標**
-- 週期: **{params_used.get('period', 'N/A')}**
-- 買進門檻: **{params_used.get('buy', 'N/A')}** (低於此值為超賣，反彈買入)
-- 賣出門檻: **{params_used.get('sell', 'N/A')}** (高於此值為超買，回吐賣出)
-- 📖 邏輯: RSI 從上向下跌破買進門檻 = 買入 | RSI 從下向上突破賣出門檻 = 賣出
-        """)
-    
-    if "KD" in selected:
-        params_used = params_dict.get("KD", {})
-        param_info.append(f"""
+- 週期: **{params_used.get('period', 'N/A')}** | 買進: **{params_used.get('buy', 'N/A')}** | 賣出: **{params_used.get('sell', 'N/A')}**
+            """)
+        
+        if "KD" in selected:
+            params_used = params_dict.get("KD", {})
+            param_info.append(f"""
 **🔹 KD 隨機指標**
-- 週期 (N): **{params_used.get('n', 'N/A')}** (高低價計算區間)
-- K 平滑期: **{params_used.get('k_period', 'N/A')}**
-- D 平滑期: **{params_used.get('d_period', 'N/A')}**
-- 超賣區間: **{params_used.get('low', 'N/A')}** (低於此為超賣)
-- 超買區間: **{params_used.get('high', 'N/A')}** (高於此為超買)
-- 📖 邏輯: K < 超賣 且 K > D = 買入 | K > 超買 且 K < D = 賣出
-        """)
-    
-    if "MACD" in selected:
-        params_used = params_dict.get("MACD", {})
-        param_info.append(f"""
-**🔹 MACD 移動平均收斂發散**
-- 快速期: **{params_used.get('fast_period', 'N/A')}** (短期 EMA)
-- 慢速期: **{params_used.get('slow_period', 'N/A')}** (長期 EMA)
-- Signal 期: **{params_used.get('signal_period', 'N/A')}** (Signal 線平滑)
-- 📖 邏輯: MACD ↑ 穿過 Signal 線 = 買入 | MACD ↓ 穿過 Signal 線 = 賣出
-        """)
-    
-    if "Bollinger" in selected:
-        params_used = params_dict.get("Bollinger", {})
-        param_info.append(f"""
+- 週期(N): **{params_used.get('n', 'N/A')}** | K期: **{params_used.get('k_period', 'N/A')}** | D期: **{params_used.get('d_period', 'N/A')}**
+            """)
+        
+        if "MACD" in selected:
+            params_used = params_dict.get("MACD", {})
+            param_info.append(f"""
+**🔹 MACD 移動平均收斂散度**
+- 快速期: **{params_used.get('fast_period', 'N/A')}** | 慢速期: **{params_used.get('slow_period', 'N/A')}** | Signal期: **{params_used.get('signal_period', 'N/A')}**
+            """)
+        
+        if "Bollinger" in selected:
+            params_used = params_dict.get("Bollinger", {})
+            param_info.append(f"""
 **🔹 布林通道**
-- 週期 (N): **{params_used.get('n', 'N/A')}** (MA 計算區間)
-- 標準差倍數 (K): **{params_used.get('k', 'N/A')}** (通道寬度)
-- 📖 邏輯: 收盤價 < 下軌 = 買入 (超跌反彈) | 收盤價 > 上軌 = 賣出 (超漲回吐)
-        """)
-    
-    for info in param_info:
-        st.write(info)
-    
-    # 進出場條件說明
-    if entry_conditions or exit_conditions:
-        st.markdown("### 🎯 自訂進出場條件")
+- 週期(N): **{params_used.get('n', 'N/A')}** | 標準差(K): **{params_used.get('k', 'N/A')}**
+            """)
         
-        if entry_conditions:
-            st.write(f"**進場條件邏輯:** `{entry_logic}` (最少符合 **{entry_min}** 項)")
-            for i, (cond_type, params) in enumerate(entry_conditions, 1):
-                st.write(f"  **• 條件 {i}**: {CONDITION_TYPES.get(cond_type, cond_type)}")
-                if params:
-                    param_str = " | ".join([f"{k}={v}" for k, v in params.items()])
-                    st.write(f"    └─ 參數: `{param_str}`")
-        
-        if exit_conditions:
-            st.write(f"**出場條件邏輯:** `{exit_logic}` (最少符合 **{exit_min}** 項)")
-            for i, (cond_type, params) in enumerate(exit_conditions, 1):
-                st.write(f"  **• 條件 {i}**: {CONDITION_TYPES.get(cond_type, cond_type)}")
-                if params:
-                    param_str = " | ".join([f"{k}={v}" for k, v in params.items()])
-                    st.write(f"    └─ 參數: `{param_str}`")
+        for info in param_info:
+            st.write(info)
 
 
 # ==============================
@@ -448,9 +513,9 @@ def optimize_strategy(df, strategy):
     return best_params, result_df.sort_values("score", ascending=False)
 
 # ==============================
-# 執行
+# 執行回測
 # ==============================
-if st.button("Run Backtest"):
+if st.button("🚀 Run Backtest", use_container_width=True):
 
     # ---------- 防呆 ----------
     if start_date >= end_date:
@@ -469,6 +534,11 @@ if st.button("Run Backtest"):
         st.error("請選擇至少一個策略")
         st.stop()
 
+    # 檢查互斥條件
+    if not optimize and not entry_conditions:
+        st.error("自訂進出場條件模式下，請至少設定一個進場條件")
+        st.stop()
+
     # ---------- 抓資料 ----------
     with st.spinner("📊 正在獲取股票數據..."):
         df = get_data(stock, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
@@ -480,7 +550,7 @@ if st.button("Run Backtest"):
     df = add_indicators(df)
 
     # ==============================
-    # ⭐ 訊號產生（正確位置🔥）
+    # ⭐ 訊號產生
     # ==============================
     signals = []
 
@@ -504,15 +574,9 @@ if st.button("Run Backtest"):
             signals.append(run_strategy(df, s, best_params_dict[s]))
 
     else:
-        for s in selected:
-            signals.append(run_strategy(df, s, params_dict[s]))
-
-    # ===== 合併訊號 =====
-    # ---- 自訂條件訊號 ----
-    if entry_conditions or exit_conditions:
-        # 為 KD 條件補齊 K/D 欄位
+        # 自訂條件模式
         df_cond = df.copy()
-        if any(c in ("KD黃金交叉", "KD死亡交叉") for c, _ in (entry_conditions + exit_conditions)):
+        if any(c in ("KD黃金交叉", "KD死亡交叉", "KD_K值大於", "KD_K值小於") for c, _ in (entry_conditions + exit_conditions)):
             df_cond = compute_kd(df_cond)
 
         custom_signal = pd.Series(0, index=df_cond.index)
@@ -522,19 +586,20 @@ if st.button("Run Backtest"):
                 check_condition(df_cond, ctype, **cparams)
                 for ctype, cparams in entry_conditions
             ]
-            entry_trigger = combine_signals(entry_bool_list, entry_logic, entry_min)
-            custom_signal[entry_trigger == 1] = 1
+            if entry_bool_list:
+                entry_trigger = combine_signals(entry_bool_list, "AND", 1)
+                custom_signal[entry_trigger == 1] = 1
 
         if exit_conditions:
             exit_bool_list = [
                 check_condition(df_cond, ctype, **cparams)
                 for ctype, cparams in exit_conditions
             ]
-            exit_trigger = combine_signals(exit_bool_list, exit_logic, exit_min)
-            # 出場訊號優先：若同一時間點同時觸發進/出場，以出場（-1）為準
-            custom_signal[exit_trigger == 1] = -1
+            if exit_bool_list:
+                exit_trigger = combine_signals(exit_bool_list, "OR", 1)
+                custom_signal[exit_trigger == 1] = -1
 
-        signals.append(custom_signal)
+        signals = [custom_signal]
 
     if not signals:
         st.error("沒有產生任何策略訊號")
@@ -630,7 +695,7 @@ if st.button("Run Backtest"):
                 max_drawdown = dd
 
         # ==============================
-        # 📈 圖 + KPI（左右排版）
+        # 📈 圖 + KPI
         # ==============================
         col1, col2 = st.columns([3, 1])
 
@@ -665,7 +730,7 @@ if st.button("Run Backtest"):
                 st.error("策略為虧損")
 
         # ==============================
-        # 📈 技術分析圖表（K棒形式）
+        # 📈 技術分析圖表
         # ==============================
         st.subheader("📈 技術分析圖表")
 
@@ -675,13 +740,6 @@ if st.button("Run Backtest"):
         show_kd_chart        = "KD" in selected
         show_macd_chart      = "MACD" in selected
         show_rsi_chart       = "RSI" in selected
-
-        # 自訂條件也可觸發副圖
-        all_cond_types = [c for c, _ in (entry_conditions + exit_conditions)]
-        if any(c in ("KD黃金交叉", "KD死亡交叉") for c in all_cond_types):
-            show_kd_chart = True
-        if any(c in ("MACD由零翻正", "MACD黃金交叉", "MACD死亡交叉") for c in all_cond_types):
-            show_macd_chart = True
 
         # 副圖指標清單
         sub_indicators = []
@@ -698,10 +756,10 @@ if st.button("Run Backtest"):
             main_h = 0.55
             sub_h  = round(0.45 / len(sub_indicators), 4)
             row_heights    = [main_h] + [sub_h] * len(sub_indicators)
-            subplot_titles = ["K線 & 均線"] + sub_indicators
+            subplot_titles = ["K線 & MA10/MA20"] + sub_indicators
         else:
             row_heights    = [1.0]
-            subplot_titles = ["K線 & 均線"]
+            subplot_titles = ["K線 & MA10/MA20"]
 
         fig_tech = make_subplots(
             rows=n_rows,
@@ -712,7 +770,7 @@ if st.button("Run Backtest"):
             subplot_titles=subplot_titles,
         )
 
-        # ⭐ 主圖：K棒圖表（取代收盤價線圖）
+        # ⭐ 主圖：K棒圖表
         fig_tech.add_trace(
             go.Candlestick(
                 x=df.index,
@@ -727,7 +785,7 @@ if st.button("Run Backtest"):
             row=1, col=1,
         )
 
-        # ⭐ 新增：MA10 和 MA20 均線（不顯示 MA60）
+        # ⭐ MA10 和 MA20 均線
         ma_10 = df["Close"].rolling(10).mean()
         ma_20 = df["Close"].rolling(20).mean()
         
@@ -796,7 +854,7 @@ if st.button("Run Backtest"):
                     x=buy_dates_list, y=buy_px_list,
                     mode="markers", name="買入",
                     marker=dict(symbol="triangle-up", size=14, color="green"),
-                    hovertemplate="買入<br>日期: %{x}<br>價格: %{y:.2f}<extra></extra>",
+                    hovertemplate="買入<br>日期: %{x}<br>��格: %{y:.2f}<extra></extra>",
                 ),
                 row=1, col=1,
             )
