@@ -198,6 +198,134 @@ with st.expander("⚙️ 自訂出場條件設定（最多 5 個）", expanded=F
 # ==============================
 optimize = st.checkbox("啟用最佳化")
 
+# ⭐ 新增：最佳化說明
+if optimize:
+    with st.expander("📘 最佳化使用說明", expanded=True):
+        st.markdown("""
+### 🎯 最佳化邏輯說明
+
+**最佳化目的**: 自動搜尋各策略的最優參數，而不是手動設定
+
+**評分方式** (加權組合):
+- **總報酬 (50%)**: 策略獲利能力
+- **Sharpe 夏普比率 (30%)**: 風險調整後報酬（越高越穩定）
+- **勝率 (20%)**: 獲利次數比例
+
+**運作流程**:
+1. 自動遍歷參數空間（短均線、週期、門檻值等）
+2. 對每組參數進行回測
+3. 計算評分（Return×0.5 + Sharpe×0.3 + Winrate×0.2）
+4. 返回最高評分的參數組合
+
+**注意事項**:
+- ⏱️ 最佳化會耗費較多時間（取決於參數空間大小）
+- 📊 結果會顯示 Top 5 最優參數組合
+- ⚠️ 過去績效不代表未來走勢，建議在實盤前進行充分驗證
+        """)
+
+# ==============================
+# 📋 動態參數說明欄（在 Run Backtest 之前）
+# ==============================
+st.subheader("📋 回測參數設定說明")
+
+with st.expander("詳細參數配置", expanded=True):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📅 回測基本設定")
+        st.write(f"**股票代號:** {stock}")
+        st.write(f"**開始日期:** {start_date}")
+        st.write(f"**結束日期:** {end_date}")
+        st.write(f"**策略組合:** {', '.join(selected) if selected else '(未選擇)'}")
+        
+    with col2:
+        st.markdown("### ⚙️ 最優化設定")
+        if optimize:
+            st.write("✅ **最佳化:** 啟用")
+            st.write("**評分方式:** Return × 0.5 + Sharpe × 0.3 + Winrate × 0.2")
+        else:
+            st.write("❌ **最佳化:** 停用")
+            st.write("**使用模式:** 手動參數設定")
+    
+    # 策略參數說明（動態）
+    st.markdown("### 📌 策略參數設定")
+    
+    param_info = []
+    
+    if "MA" in selected:
+        params_used = params_dict.get("MA", {})
+        param_info.append(f"""
+**🔹 MA 均線策略**
+- 短均線週期: **{params_used.get('short', 'N/A')}**
+- 長均線週期: **{params_used.get('long', 'N/A')}**
+- 📖 邏輯: 短均線 ↑ 穿過長均線 = 買入信號 | 短均線 ↓ 穿過長均線 = 賣出信號
+        """)
+    
+    if "RSI" in selected:
+        params_used = params_dict.get("RSI", {})
+        param_info.append(f"""
+**🔹 RSI 相對強弱指標**
+- 週期: **{params_used.get('period', 'N/A')}**
+- 買進門檻: **{params_used.get('buy', 'N/A')}** (低於此值為超賣，反彈買入)
+- 賣出門檻: **{params_used.get('sell', 'N/A')}** (高於此值為超買，回吐賣出)
+- 📖 邏輯: RSI 從上向下跌破買進門檻 = 買入 | RSI 從下向上突破賣出門檻 = 賣出
+        """)
+    
+    if "KD" in selected:
+        params_used = params_dict.get("KD", {})
+        param_info.append(f"""
+**🔹 KD 隨機指標**
+- 週期 (N): **{params_used.get('n', 'N/A')}** (高低價計算區間)
+- K 平滑期: **{params_used.get('k_period', 'N/A')}**
+- D 平滑期: **{params_used.get('d_period', 'N/A')}**
+- 超賣區間: **{params_used.get('low', 'N/A')}** (低於此為超賣)
+- 超買區間: **{params_used.get('high', 'N/A')}** (高於此為超買)
+- 📖 邏輯: K < 超賣 且 K > D = 買入 | K > 超買 且 K < D = 賣出
+        """)
+    
+    if "MACD" in selected:
+        params_used = params_dict.get("MACD", {})
+        param_info.append(f"""
+**🔹 MACD 移動平均收斂發散**
+- 快速期: **{params_used.get('fast_period', 'N/A')}** (短期 EMA)
+- 慢速期: **{params_used.get('slow_period', 'N/A')}** (長期 EMA)
+- Signal 期: **{params_used.get('signal_period', 'N/A')}** (Signal 線平滑)
+- 📖 邏輯: MACD ↑ 穿過 Signal 線 = 買入 | MACD ↓ 穿過 Signal 線 = 賣出
+        """)
+    
+    if "Bollinger" in selected:
+        params_used = params_dict.get("Bollinger", {})
+        param_info.append(f"""
+**🔹 布林通道**
+- 週期 (N): **{params_used.get('n', 'N/A')}** (MA 計算區間)
+- 標準差倍數 (K): **{params_used.get('k', 'N/A')}** (通道寬度)
+- 📖 邏輯: 收盤價 < 下軌 = 買入 (超跌反彈) | 收盤價 > 上軌 = 賣出 (超漲回吐)
+        """)
+    
+    for info in param_info:
+        st.write(info)
+    
+    # 進出場條件說明
+    if entry_conditions or exit_conditions:
+        st.markdown("### 🎯 自訂進出場條件")
+        
+        if entry_conditions:
+            st.write(f"**進場條件邏輯:** `{entry_logic}` (最少符合 **{entry_min}** 項)")
+            for i, (cond_type, params) in enumerate(entry_conditions, 1):
+                st.write(f"  **• 條件 {i}**: {CONDITION_TYPES.get(cond_type, cond_type)}")
+                if params:
+                    param_str = " | ".join([f"{k}={v}" for k, v in params.items()])
+                    st.write(f"    └─ 參數: `{param_str}`")
+        
+        if exit_conditions:
+            st.write(f"**出場條件邏輯:** `{exit_logic}` (最少符合 **{exit_min}** 項)")
+            for i, (cond_type, params) in enumerate(exit_conditions, 1):
+                st.write(f"  **• 條件 {i}**: {CONDITION_TYPES.get(cond_type, cond_type)}")
+                if params:
+                    param_str = " | ".join([f"{k}={v}" for k, v in params.items()])
+                    st.write(f"    └─ 參數: `{param_str}`")
+
+
 # ==============================
 # 最佳化參數設定
 # ==============================
@@ -279,7 +407,7 @@ def run_strategy(df, strategy, p):
         return macd_strategy(df, p["fast_period"], p["slow_period"], p["signal_period"])
 
 # ==============================
-# 統一策略執行器
+# 統一最佳化器
 # ==============================
 def optimize_strategy(df, strategy):
 
@@ -337,8 +465,13 @@ if st.button("Run Backtest"):
         st.error("結束日期不能超過今天")
         st.stop()
 
+    if not selected:
+        st.error("請選擇至少一個策略")
+        st.stop()
+
     # ---------- 抓資料 ----------
-    df = get_data(stock, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+    with st.spinner("📊 正在獲取股票數據..."):
+        df = get_data(stock, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
 
     if df.empty:
         st.error("抓不到資料")
@@ -354,24 +487,18 @@ if st.button("Run Backtest"):
     if optimize:
 
         best_params_dict = {}
-
         opt_results = {}
 
-        for s in selected:
-            best_params, result_df = optimize_strategy(df, s)
+        with st.spinner("🔄 正在執行參數最佳化，請稍候..."):
+            for s in selected:
+                best_params, result_df = optimize_strategy(df, s)
 
-            if best_params is None:
-                st.warning(f"{s} 無最佳參數")
-                continue
+                if best_params is None:
+                    st.warning(f"{s} 無最佳參數")
+                    continue
 
-            best_params_dict[s] = best_params
-            opt_results[s] = result_df   # ⭐ 存下來
-
-            if best_params is None:
-                st.warning(f"{s} 無最佳參數")
-                continue
-
-            best_params_dict[s] = best_params
+                best_params_dict[s] = best_params
+                opt_results[s] = result_df
 
         for s in best_params_dict:
             signals.append(run_strategy(df, s, best_params_dict[s]))
@@ -423,126 +550,6 @@ if st.button("Run Backtest"):
     perf = performance(trades)
 
     # ==============================
-    # 📋 回測參數設定說明（新增）
-    # ==============================
-    st.subheader("📋 回測參數設定說明")
-    
-    with st.expander("詳細參數配置", expanded=True):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### 📅 回測基本設定")
-            st.write(f"**股票代號:** {stock}")
-            st.write(f"**開始日期:** {start_date}")
-            st.write(f"**結束日期:** {end_date}")
-            st.write(f"**策略組合:** {', '.join(selected)}")
-            
-        with col2:
-            st.markdown("### ⚙️ 最優化設定")
-            if optimize:
-                st.write("✅ **最佳化:** 啟用")
-                st.write("**評分方式:** Return × 0.5 + Sharpe × 0.3 + Winrate × 0.2")
-            else:
-                st.write("❌ **最佳化:** 停用")
-                st.write("**使用模式:** 手動參數設定")
-        
-        # 策略參數說明
-        st.markdown("### 📌 策略參數設定")
-        
-        param_info = []
-        
-        if "MA" in selected:
-            if optimize:
-                params_used = best_params_dict.get("MA", params_dict.get("MA", {}))
-            else:
-                params_used = params_dict.get("MA", {})
-            
-            param_info.append(f"""
-**MA 均線策略**
-- 短均線週期: {params_used.get('short', 'N/A')}
-- 長均線週期: {params_used.get('long', 'N/A')}
-- 邏輯: 短均線上穿長均線為買入信號，下穿為賣出信號
-            """)
-        
-        if "RSI" in selected:
-            if optimize:
-                params_used = best_params_dict.get("RSI", params_dict.get("RSI", {}))
-            else:
-                params_used = params_dict.get("RSI", {})
-            
-            param_info.append(f"""
-**RSI 相對強弱指標**
-- 週期: {params_used.get('period', 'N/A')}
-- 買進門檻: {params_used.get('buy', 'N/A')} (低於此值為超賣)
-- 賣出門檻: {params_used.get('sell', 'N/A')} (高於此值為超買)
-- 邏輯: RSI 跌破買進門檻時買入，突破賣出門檻時賣出
-            """)
-        
-        if "KD" in selected:
-            if optimize:
-                params_used = best_params_dict.get("KD", params_dict.get("KD", {}))
-            else:
-                params_used = params_dict.get("KD", {})
-            
-            param_info.append(f"""
-**KD 隨機指標**
-- 週期 (N): {params_used.get('n', 'N/A')}
-- K 平滑期: {params_used.get('k_period', 'N/A')}
-- D 平滑期: {params_used.get('d_period', 'N/A')}
-- 超賣區間: {params_used.get('low', 'N/A')}
-- 超買區間: {params_used.get('high', 'N/A')}
-- 邏輯: K > D 且 K < 超賣區間時買入，K < D 且 K > 超買區間時賣出
-            """)
-        
-        if "MACD" in selected:
-            if optimize:
-                params_used = best_params_dict.get("MACD", params_dict.get("MACD", {}))
-            else:
-                params_used = params_dict.get("MACD", {})
-            
-            param_info.append(f"""
-**MACD 移動平均收斂發散**
-- 快速期: {params_used.get('fast_period', 'N/A')}
-- 慢速期: {params_used.get('slow_period', 'N/A')}
-- Signal 期: {params_used.get('signal_period', 'N/A')}
-- 邏輯: MACD 上穿 Signal 線時買入，下穿時賣出
-            """)
-        
-        if "Bollinger" in selected:
-            if optimize:
-                params_used = best_params_dict.get("Bollinger", params_dict.get("Bollinger", {}))
-            else:
-                params_used = params_dict.get("Bollinger", {})
-            
-            param_info.append(f"""
-**布林通道**
-- 週期 (N): {params_used.get('n', 'N/A')}
-- 標準差倍數 (K): {params_used.get('k', 'N/A')}
-- 邏輯: 收盤價低於下軌時買入，高於上軌時賣出
-            """)
-        
-        for info in param_info:
-            st.write(info)
-        
-        # 進出場條件說明
-        if entry_conditions or exit_conditions:
-            st.markdown("### 🎯 自訂進出場條件")
-            
-            if entry_conditions:
-                st.write(f"**進場條件邏輯:** {entry_logic} (最少符合 {entry_min} 項)")
-                for i, (cond_type, params) in enumerate(entry_conditions, 1):
-                    st.write(f"  • 條件 {i}: {CONDITION_TYPES.get(cond_type, cond_type)}")
-                    if params:
-                        st.write(f"    參數: {params}")
-            
-            if exit_conditions:
-                st.write(f"**出場條件邏輯:** {exit_logic} (最少符合 {exit_min} 項)")
-                for i, (cond_type, params) in enumerate(exit_conditions, 1):
-                    st.write(f"  • 條件 {i}: {CONDITION_TYPES.get(cond_type, cond_type)}")
-                    if params:
-                        st.write(f"    參數: {params}")
-
-    # ==============================
     # 顯示績效
     # ==============================
     if perf:
@@ -557,26 +564,26 @@ if st.button("Run Backtest"):
         col3.metric("Sharpe", f"{sharpe:.2f}")
         col4.metric("交易次數", len(trades))
 
-        st.subheader("⚙️ 最佳參數")
-        
-        if optimize: 
+        if optimize:
+            st.subheader("⚙️ 最佳參數")
+            
             for strat, params in best_params_dict.items():
-    
+        
                 st.markdown(f"### 📌 {strat}")
-    
+        
                 if strat == "MA":
                     st.write(f"短均線：{params['short']}")
                     st.write(f"長均線：{params['long']}")
-    
+        
                 elif strat == "RSI":
                     st.write(f"週期：{params['period']}")
                     st.write(f"買進門檻：{params['buy']}")
                     st.write(f"賣出門檻：{params['sell']}")
-    
+        
                 elif strat == "Bollinger":
                     st.write(f"期間 n：{params['n']}")
                     st.write(f"標準差 k：{params['k']}")
-    
+        
                 elif strat == "KD":
                     st.write(f"週期 n：{params['n']}")
                     st.write(f"K 期：{params['k_period']}")
@@ -593,9 +600,8 @@ if st.button("Run Backtest"):
             for s in opt_results:
                 st.markdown(f"### 📌 {s}")
                 df_show = opt_results[s].head(5).copy()
-                # ⭐ 排序 + 格式化
                 df_show = df_show.round(4)
-    
+        
                 st.dataframe(
                     df_show,
                     use_container_width=True,
@@ -606,9 +612,8 @@ if st.button("Run Backtest"):
         st.warning("沒有產生交易績效")
 
 
-
     # ==============================
-    # 📊 計算績效（只算一次🔥）
+    # 📊 計算績效
     # ==============================
     if len(equity) > 1:
 
@@ -625,7 +630,7 @@ if st.button("Run Backtest"):
                 max_drawdown = dd
 
         # ==============================
-        # 📈 圖 + KPI（左右排版🔥）
+        # 📈 圖 + KPI（左右排版）
         # ==============================
         col1, col2 = st.columns([3, 1])
 
@@ -660,7 +665,7 @@ if st.button("Run Backtest"):
                 st.error("策略為虧損")
 
         # ==============================
-        # 📈 技術分析圖表
+        # 📈 技術分析圖表（K棒形式）
         # ==============================
         st.subheader("📈 技術分析圖表")
 
@@ -693,10 +698,10 @@ if st.button("Run Backtest"):
             main_h = 0.55
             sub_h  = round(0.45 / len(sub_indicators), 4)
             row_heights    = [main_h] + [sub_h] * len(sub_indicators)
-            subplot_titles = ["價格走勢"] + sub_indicators
+            subplot_titles = ["K線 & 均線"] + sub_indicators
         else:
             row_heights    = [1.0]
-            subplot_titles = ["價格走勢"]
+            subplot_titles = ["K線 & 均線"]
 
         fig_tech = make_subplots(
             rows=n_rows,
@@ -707,33 +712,33 @@ if st.button("Run Backtest"):
             subplot_titles=subplot_titles,
         )
 
-        # 主圖：收盤價
+        # ⭐ 主圖：K棒圖表（取代收盤價線圖）
         fig_tech.add_trace(
-            go.Scatter(x=df.index, y=df["Close"], name="收盤價",
-                       line=dict(color="royalblue", width=1.5)),
+            go.Candlestick(
+                x=df.index,
+                open=df["Open"],
+                high=df["High"],
+                low=df["Low"],
+                close=df["Close"],
+                name="K棒",
+                increasing_line_color="red",
+                decreasing_line_color="green"
+            ),
             row=1, col=1,
         )
 
-        # ⭐ 新增：5, 10, 20 MA 均線
-        st.write("✅ **K線圖表已新增 MA5, MA10, MA20 均線**")
-        
-        ma_5 = df["Close"].rolling(5).mean()
+        # ⭐ 新增：MA10 和 MA20 均線（不顯示 MA60）
         ma_10 = df["Close"].rolling(10).mean()
         ma_20 = df["Close"].rolling(20).mean()
         
         fig_tech.add_trace(
-            go.Scatter(x=df.index, y=ma_5, name="MA5",
-                       line=dict(color="rgba(255, 102, 0, 0.8)", width=1)),
-            row=1, col=1,
-        )
-        fig_tech.add_trace(
             go.Scatter(x=df.index, y=ma_10, name="MA10",
-                       line=dict(color="rgba(255, 0, 127, 0.8)", width=1)),
+                       line=dict(color="rgba(255, 100, 0, 0.8)", width=1.5)),
             row=1, col=1,
         )
         fig_tech.add_trace(
             go.Scatter(x=df.index, y=ma_20, name="MA20",
-                       line=dict(color="rgba(0, 127, 255, 0.8)", width=1)),
+                       line=dict(color="rgba(0, 100, 255, 0.8)", width=1.5)),
             row=1, col=1,
         )
 
@@ -749,7 +754,7 @@ if st.button("Run Backtest"):
             )
             fig_tech.add_trace(
                 go.Scatter(x=df.index, y=df["Close"].rolling(long_p).mean(),
-                           name=f"MA{long_p}", line=dict(color="green", width=1.2)),
+                           name=f"MA{long_p}", line=dict(color="purple", width=1.2)),
                 row=1, col=1,
             )
 
@@ -880,7 +885,7 @@ if st.button("Run Backtest"):
         st.plotly_chart(fig_tech, use_container_width=True)
 
         # ==============================
-        # 📖 圖表解讀（放下面🔥）
+        # 📖 圖表解讀
         # ==============================
         st.subheader("📖 圖表解讀")
 
