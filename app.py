@@ -10,13 +10,8 @@ from indicators import add_indicators
 from indicators import compute_kd, add_macd
 from strategies import *
 from backtest import *
-from conditions import (
-    CONDITION_TYPES,
-    CONDITION_CATEGORIES,
-    CONDITION_PARAMS,
-    check_condition,
-    combine_signals,
-)
+from conditions import ＊
+
 
 st.set_page_config(layout="wide")
 st.title("Stock Backtest Application")
