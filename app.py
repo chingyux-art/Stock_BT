@@ -10,7 +10,7 @@ from indicators import add_indicators
 from indicators import compute_kd, add_macd
 from strategies import *
 from backtest import *
-from conditions import ＊
+import conditions
 
 
 st.set_page_config(layout="wide")
